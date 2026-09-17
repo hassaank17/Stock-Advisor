@@ -1,0 +1,3 @@
+yfinance
+yfscreen
+google-genai
