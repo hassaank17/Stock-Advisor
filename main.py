@@ -90,19 +90,20 @@ def generate_investment_report(fundamental_data):
     Here is their current fundamental data: 
     {fundamental_data}
     
-    Based strictly on these financial metrics, provide a structured investment report:
-    1. Which stocks are fundamentally strong right now and why (reference P/E, margins, and ROE).
-    2. The Top 5 stocks with the most investment potential based on valuation and analyst upside.
-    3. Specific company warning signs (e.g., overvaluation, negative earnings, or razor-thin margins).
+    Based strictly on these financial metrics, provide a structured investment report covering:
+    1. Fundamentally Strong Stocks: Which companies exhibit strong quality metrics across profitability, capital efficiency, and earnings support (positive P/E ratios, robust margins, and strong ROE).
+    2. Top 5 Stocks with the Most Investment Potential: Rank these by combining strong fundamentals/valuations with analyst price target upside. Include the Analyst Upside and Rationale for each.
+    3. Specific Company Warning Signs: Group these into three categories: 
+        A. Negative Earnings & Capital Destruction (Negative ROE / Negative Margins).
+        B. Overvaluation Relative to Earnings Performance.
+        C. Thin Profit Margins & Low ROE.
     """
   
-  # Use the specific version Google requested
   response = client.models.generate_content(
       model="gemini-3.6-flash", 
       contents=prompt,
   )
   return response.text
-
 
 def send_email_report(report_content):
   print(f"Dispatching report from {SENDER_EMAIL} to {RECEIVER_EMAIL}...")
