@@ -1,0 +1,28 @@
+name: Stock Scanner Daily Analysis
+
+on:
+  schedule:
+    # Runs Monday to Friday at 12:00 UTC (8:00 AM EST)
+    - cron: '0 12 * * 1-5'
+  workflow_dispatch: # Enables a manual trigger button
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Market Analysis
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python main.py
