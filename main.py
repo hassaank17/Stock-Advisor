@@ -95,8 +95,10 @@ def generate_investment_report(fundamental_data):
     2. The Top 5 stocks with the most investment potential based on valuation and analyst upside.
     3. Specific company warning signs (e.g., overvaluation, negative earnings, or razor-thin margins).
     """
+  
+  # Use the specific version Google requested
   response = client.models.generate_content(
-      model="gemini-flash",
+      model="gemini-3.6-flash", 
       contents=prompt,
   )
   return response.text
