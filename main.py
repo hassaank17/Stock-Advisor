@@ -96,7 +96,7 @@ def generate_investment_report(fundamental_data):
     3. Specific company warning signs (e.g., overvaluation, negative earnings, or razor-thin margins).
     """
   response = client.models.generate_content(
-      model="gemini-2.5-flash",
+      model="gemini-flash",
       contents=prompt,
   )
   return response.text
