@@ -2,7 +2,6 @@ name: Stock Scanner Daily Analysis
 
 on:
   schedule:
-    # Runs Monday to Friday at 12:00 UTC (8:00 AM EST)
     - cron: '0 12 * * 1-5'
   workflow_dispatch:
 
@@ -26,6 +25,6 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SENDER_EMAIL: ${{ secrets.SENDER_EMAIL }}
-          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          SENDER_PASSWORD: ${{ secrets.SENDER_PASSWORD }}
           RECEIVER_EMAIL: ${{ secrets.RECEIVER_EMAIL }}
         run: python main.py
