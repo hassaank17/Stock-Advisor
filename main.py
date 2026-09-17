@@ -1,36 +1,29 @@
-
 import yfinance as yf
 import yfscreen as yfs
 import os
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from google import genai
 
-# Ensure your GEMINI_API_KEY is stored in your environment or GitHub Secrets
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 def get_market_movers():
-    """Scan ALL US stocks and filter for the top active movers based on volume and size."""
     filters = [
         ["eq", ["region", "us"]],
-        ["gt", ["dayvolume", 5000000]], # Daily trading volume greater than 5 Million
-        ["btwn", ["intradaymarketcap", 2e9, 1e12]] # Market cap between $2B and $1T
+        ["gt", ["dayvolume", 5000000]],
+        ["btwn", ["intradaymarketcap", 2e9, 1e12]]
     ]
     query = yfs.create_query(filters)
     payload = yfs.create_payload("equity", query)
-    
-    # Get the top 15 results from the screener
     data = yfs.get_data(payload)
-    tickers = data['symbol'].head(15).tolist()
-    return tickers
+    return data['symbol'].head(15).tolist()
 
 def get_fundamental_data(tickers):
-    """Fetch deep quantitative and fundamental data for each stock."""
     stock_data = {}
-    
     for ticker in tickers:
         stock = yf.Ticker(ticker)
         info = stock.info
-        
-        # Extracting key fundamentals for the AI to evaluate
         stock_data[ticker] = {
             "Current Price": info.get("currentPrice", "N/A"),
             "52-Week High": info.get("fiftyTwoWeekHigh", "N/A"),
@@ -41,13 +34,10 @@ def get_fundamental_data(tickers):
             "Return on Equity (ROE)": info.get("returnOnEquity", "N/A"),
             "Analyst Target Price": info.get("targetMeanPrice", "N/A")
         }
-                
     return stock_data
 
 def generate_investment_report(fundamental_data):
-    """Feed the quantitative data to the latest Gemini model for fundamental analysis."""
     client = genai.Client(api_key=GEMINI_API_KEY)
-    
     prompt = f"""
     You are an expert quantitative financial analyst. I screened the US market for today's highest volume mid-to-large cap stocks.
     Here is their current fundamental data: 
@@ -58,24 +48,37 @@ def generate_investment_report(fundamental_data):
     2. The Top 5 stocks with the most investment potential based on valuation and upside to analyst targets.
     3. Specific company warning signs (e.g., overvaluation, poor margins).
     """
-    
-    # Using the latest model: gemini-3.7-flash
     response = client.models.generate_content(
-        model='gemini-3.7-flash',
+        model='gemini-2.5-flash',
         contents=prompt,
     )
     return response.text
 
+def send_email_report(report_content):
+    sender = os.getenv("SENDER_EMAIL")
+    password = os.getenv("EMAIL_PASSWORD")
+    receiver = os.getenv("RECEIVER_EMAIL")
+
+    msg = MIMEMultipart()
+    msg["From"] = sender
+    msg["To"] = receiver
+    msg["Subject"] = "📈 Daily Fundamental Stock Market Report"
+    msg.attach(MIMEText(report_content, "plain"))
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(sender, password)
+        server.send_message(msg)
+    print("Email sent successfully!")
+
 if __name__ == "__main__":
-    print("1. Scanning the entire market for top movers...")
+    print("1. Scanning market...")
     top_tickers = get_market_movers()
-    print(f"Screened Tickers: {top_tickers}")
     
-    print("2. Fetching fundamental financial metrics...")
+    print("2. Fetching metrics...")
     fundamentals = get_fundamental_data(top_tickers)
     
-    print("3. Generating AI Analysis using Gemini 3.7 Flash...")
+    print("3. Generating analysis...")
     final_report = generate_investment_report(fundamentals)
     
-    print("\n--- FUNDAMENTAL STOCK ANALYSIS REPORT ---\n")
-    print(final_report)
+    print("4. Dispatching email...")
+    send_email_report(final_report)
