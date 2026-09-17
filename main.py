@@ -16,7 +16,7 @@ def verify_env_variables():
   required = {
       "GEMINI_API_KEY": GEMINI_API_KEY,
       "SENDER_EMAIL": SENDER_EMAIL,
-      "EMAIL_PASSWORD": EMAIL_PASSWORD,
+      "SENDER_PASSWORD": SENDER_PASSWORD,
       "RECEIVER_EMAIL": RECEIVER_EMAIL,
   }
   missing = [k for k, v in required.items() if not v]
@@ -113,7 +113,7 @@ def send_email_report(report_content):
   msg.attach(MIMEText(report_content, "plain"))
 
   with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-    server.login(SENDER_EMAIL, EMAIL_PASSWORD)
+    server.login(SENDER_EMAIL, SENDER_PASSWORD)
     server.send_message(msg)
   print("Email successfully sent!")
 
