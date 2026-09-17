@@ -2,13 +2,13 @@ import os
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-import yfinance as yf
 from google import genai
+import yfinance as yf
 
-# Fetch environment variables
+# Fetch environment variables matching your GitHub Secrets exactly
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 SENDER_EMAIL = os.getenv("SENDER_EMAIL")
-EMAIL_PASSWORD = os.getenv("SENDER_PASSWORD")
+SENDER_PASSWORD = os.getenv("SENDER_PASSWORD")
 RECEIVER_EMAIL = os.getenv("RECEIVER_EMAIL")
 
 
@@ -31,7 +31,6 @@ def get_market_movers():
   """Fetch the top active market movers directly through yfinance."""
   print("Scanning the market for high-volume active stocks...")
   try:
-    # Use native yfinance predefined screener to bypass external scraper bans
     screener = yf.screen("most_actives")
     quotes = screener.get("quotes", [])
     tickers = [item["symbol"] for item in quotes if "." not in item["symbol"]][
@@ -42,7 +41,6 @@ def get_market_movers():
     return tickers
   except Exception as e:
     print(f"Screener fallback triggered due to: {e}")
-    # Fallback to high-liquidity large-cap universe if Yahoo blocks screener API
     return [
         "NVDA",
         "AAPL",
