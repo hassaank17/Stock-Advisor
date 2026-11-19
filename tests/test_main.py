@@ -240,16 +240,23 @@ def test_gemini_first_try():
 
 
 def test_gemini_retries_overload_then_succeeds():
-  client = FakeGemini({"primary": [api_error(503), api_error(429, "RESOURCE_EXHAUSTED"), "ok"]})
+  client = FakeGemini({"primary": [api_error(503), "ok"]})
   delays = []
   assert main.generate_with_fallback(client, ["primary"], "p", sleep=delays.append) == ("ok", "primary")
+  assert len(delays) == 1 and 10 <= delays[0] <= 13
+
+
+def test_gemini_backoff_grows_between_attempts():
+  client = FakeGemini({"primary": [api_error(503), api_error(429, "RESOURCE_EXHAUSTED"), "ok"]})
+  delays = []
+  main.generate_with_fallback(client, ["primary"], "p", attempts_per_model=3, sleep=delays.append)
   assert len(delays) == 2 and delays[1] > delays[0]
 
 
 def test_gemini_falls_back_to_second_model():
-  client = FakeGemini({"primary": [api_error(503)] * 3, "backup": ["from backup"]})
+  client = FakeGemini({"primary": [api_error(503), api_error(504, "DEADLINE_EXCEEDED")], "backup": ["from backup"]})
   assert main.generate_with_fallback(client, ["primary", "backup"], "p", sleep=no_sleep) == ("from backup", "backup")
-  assert client.calls == ["primary"] * 3 + ["backup"]
+  assert client.calls == ["primary", "primary", "backup"]
 
 
 def test_gemini_skips_missing_model_without_retrying():
@@ -260,10 +267,21 @@ def test_gemini_skips_missing_model_without_retrying():
 
 
 def test_gemini_unavailable_after_all_rounds():
-  client = FakeGemini({"primary": [api_error(503)] * 6, "backup": [None] * 6})
+  client = FakeGemini({"primary": [api_error(503)] * 4, "backup": [None] * 4})
+  delays = []
   with pytest.raises(main.GeminiUnavailableError, match="primary, backup"):
-    main.generate_with_fallback(client, ["primary", "backup"], "p", sleep=no_sleep)
-  assert len(client.calls) == 12
+    main.generate_with_fallback(client, ["primary", "backup"], "p", sleep=delays.append)
+  assert client.calls == ["primary", "primary", "backup", "backup"] * 2
+  assert 60 in delays  # the longer pause before the second round
+
+
+def test_gemini_stops_retrying_when_the_time_budget_is_spent():
+  client = FakeGemini({"primary": [api_error(503)] * 4, "backup": [api_error(503)] * 4})
+  ticks = iter(range(0, 10_000, 100))  # every look at the clock is 100s later
+  with pytest.raises(main.GeminiUnavailableError):
+    main.generate_with_fallback(
+        client, ["primary", "backup"], "p", time_budget=150, sleep=no_sleep, clock=lambda: next(ticks))
+  assert client.calls == ["primary", "primary"]
 
 
 # --- email -----------------------------------------------------------------
@@ -293,6 +311,17 @@ def test_email_renders_markdown_and_includes_the_numbers():
   plain = message.get_body(preferencelist=("plain",)).get_content()
   assert "## 1. Fundamentally Strong Stocks" in plain
   assert "Ticker" in plain and "+27.5%" in plain and "$100.00" in plain
+
+
+def test_nested_bullets_from_gemini_stay_nested():
+  report = "## 2. Top 5\n- **1. NVDA**\n  - Analyst Upside: +27.5%\n  - Rationale: strong\n"
+  html_body = main.render_html(report, {"NVDA": snapshot()}, "date", "footer")
+  assert html_body.count("<ul>") == 2  # an outer list with one nested list
+  assert "<li>Analyst Upside: +27.5%</li>" in html_body
+  # Text that already uses 4 spaces (or has no nesting) is left alone.
+  four = "- a\n    - b\n"
+  assert main.normalize_list_indentation(four) == four
+  assert main.normalize_list_indentation("- a\n- b\n") == "- a\n- b\n"
 
 
 def test_email_without_ai_report_still_has_the_table():

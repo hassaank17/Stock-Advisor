@@ -18,6 +18,7 @@ import html
 import math
 import os
 import random
+import re
 import smtplib
 import sys
 import time
@@ -40,7 +41,10 @@ SMTP_TIMEOUT = 30  # seconds
 # Tried in order. When a model is overloaded (503) or rate limited (429) the
 # next one takes over, so one busy model no longer means a missed report.
 DEFAULT_GEMINI_MODELS = "gemini-3.6-flash,gemini-3.5-flash-lite"
-GEMINI_TIMEOUT_MS = 120_000
+# An overloaded model can hang instead of failing fast, so cap each request
+# and the retrying as a whole; healthy answers arrive well inside a minute.
+GEMINI_TIMEOUT_MS = 90_000
+GEMINI_TIME_BUDGET = 8 * 60  # seconds
 TRANSIENT_STATUS_CODES = {408, 429, 500, 502, 503, 504}
 
 FALLBACK_TICKERS = [
@@ -342,27 +346,35 @@ def generate_with_fallback(
     client,
     models,
     prompt,
-    attempts_per_model=3,
+    attempts_per_model=2,
     rounds=2,
     base_delay=10,
     round_delay=60,
+    time_budget=GEMINI_TIME_BUDGET,
     sleep=time.sleep,
+    clock=time.monotonic,
 ):
   """Ask Gemini for text, retrying transient errors and falling back across models.
 
-  Each model gets a few attempts with exponential backoff before the next
-  model is tried. A model that fails permanently (retired, not found, bad
-  request) is dropped immediately. If every model is still failing, the whole
-  list is tried once more after a longer pause.
+  Each model gets a retry with backoff before the next model is tried. A
+  model that fails permanently (retired, not found, bad request) is dropped
+  immediately. If every model is still failing, the whole list is tried once
+  more after a longer pause, until `time_budget` seconds have been spent.
 
   Returns (text, model). Raises GeminiUnavailableError if nothing worked.
   """
   candidates = list(models)
   last_error = None
+  started = clock()
+
+  def out_of_time():
+    return clock() - started >= time_budget
 
   for round_number in range(1, rounds + 1):
     for model in list(candidates):
       for attempt in range(1, attempts_per_model + 1):
+        if last_error is not None and out_of_time():
+          break
         try:
           response = client.models.generate_content(
               model=model, contents=prompt
@@ -393,7 +405,7 @@ def generate_with_fallback(
                 f" {describe_error(exc)}. Moving on."
             )
 
-    if not candidates:
+    if not candidates or out_of_time():
       break
     if round_number < rounds:
       print(f"No model answered. Waiting {round_delay}s before trying again...")
@@ -485,8 +497,33 @@ def render_data_table_text(stock_data):
   )
 
 
+def normalize_list_indentation(text):
+  """Widen nested-list indentation to the 4 spaces Python-Markdown needs.
+
+  Gemini usually indents nested bullets by 2 spaces, which Python-Markdown
+  would flatten into one long list.
+  """
+  indents = [
+      len(match.group(1))
+      for match in re.finditer(
+          r"^( +)(?:[-*+]|\d+[.)]) ", text, flags=re.MULTILINE
+      )
+  ]
+  unit = min(indents, default=4)
+  if unit >= 4:
+    return text
+  return re.sub(
+      r"^ +",
+      lambda match: " " * (len(match.group(0)) * 4 // unit),
+      text,
+      flags=re.MULTILINE,
+  )
+
+
 def render_html(report_markdown, stock_data, date_label, footer):
-  body = markdown.markdown(report_markdown, extensions=["extra"])
+  body = markdown.markdown(
+      normalize_list_indentation(report_markdown), extensions=["extra"]
+  )
   return (
       '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
       '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
